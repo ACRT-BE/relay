@@ -95,9 +95,11 @@ export default function ScheduleEditor({ race }: Props) {
   };
 
   if (!race) {
-    return <div className="card">
-      <p className="text-sm text-slate-300">Créez une course ci-dessous pour commencer.</p>
-    </div>;
+    return (
+      <div className="card">
+        <p className="text-sm text-slate-300">Créez une course ci-dessous pour commencer.</p>
+      </div>
+    );
   }
 
   return (
