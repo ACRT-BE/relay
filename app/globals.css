@@ -3,7 +3,5 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: dark; }
-html, body { height: 100%; }
-body { @apply bg-slate-900 text-white; }
-button:disabled { opacity: .6; cursor: not-allowed; }
+html, body { padding: 0; margin: 0; }
+* { box-sizing: border-box; }
