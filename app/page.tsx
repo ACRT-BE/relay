@@ -4,12 +4,12 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { createClient } from '@supabase/supabase-js';
 
 // --- Supabase client (browser-safe env access) ---
-function getenv(name){
-  try { if (typeof process !== 'undefined' && process && process.env && process.env[name]) return process.env[name]; } catch (_){ }
+function getenv(name: string){
+  try { if (typeof process !== 'undefined' && (process as any)?.env?.[name]) return (process as any).env[name]; } catch (_){ }
   try {
     if (typeof window !== 'undefined'){
-      const w = window;
-      if (w.__ENV__ && w.__ENV__[name]) return w.__ENV__[name];
+      const w: any = window;
+      if (w.__ENV__?.[name]) return w.__ENV__[name];
       if (w[name]) return w[name];
     }
   } catch(_){ }
@@ -19,7 +19,7 @@ const SUPABASE_URL = getenv('NEXT_PUBLIC_SUPABASE_URL');
 const SUPABASE_KEY = getenv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
 const supabase = (SUPABASE_URL && SUPABASE_KEY) ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
-// ---------- UI helpers (inline styles only; no regex; no TS types) ----------
+// ---------- UI helpers ----------
 const UI = {
   app: { background: "linear-gradient(180deg,#0b0f1a,#121826)", minHeight: "100vh", color: "#fff" },
   panel: { backgroundColor: "#0f172a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 16, padding: 16, boxShadow: "0 4px 12px rgba(0,0,0,0.3)" },
@@ -45,7 +45,6 @@ function fmtHM(d){ return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 function minutesBetween(a,b){ return Math.max(0, Math.round((b.getTime()-a.getTime())/60000)); }
 const PALETTE = ['#ef4444','#f59e0b','#eab308','#10b981','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#f97316'];
 
-// ===== Time validation (no RegExp) =====
 function isDigit(ch){ return ch >= '0' && ch <= '9'; }
 function isValidHHmm(s){
   if (s.length !== 5) return false;
@@ -71,7 +70,6 @@ function allowPartialHHmm(s){
   return true;
 }
 
-// ---- Runtime tests ----
 if (typeof window !== 'undefined') {
   try {
     const tests = [
@@ -92,7 +90,6 @@ if (typeof window !== 'undefined') {
   } catch {}
 }
 
-// ===== Demo data =====
 function makeTeamA(){
   return {
     id: 'teamA', name: 'Équipe A',
@@ -195,6 +192,9 @@ export default function Preview(){
   const [newDriverName, setNewDriverName] = useState('');
   const [newDriverColor, setNewDriverColor] = useState(PALETTE[0]);
 
+  const [drivers, setDrivers] = useState(profile?.drivers || []);
+  const [stints, setStints] = useState(profile?.stints || []);
+
   const [openMenuIdx, setOpenMenuIdx] = useState(null);
   const toggleMenu = (idx)=> setOpenMenuIdx(openMenuIdx===idx?null:idx);
 
@@ -211,8 +211,6 @@ export default function Preview(){
     setRaceEndTime(currentRace.end); setTmpRaceEndTime(currentRace.end);
   }, [currentRaceId, profileId, currentRace]);
 
-  const [drivers, setDrivers] = useState(profile?.drivers || []);
-  const [stints, setStints] = useState(profile?.stints || []);
   useEffect(()=>{ 
     setDrivers(profile?.drivers || []); 
     setStints(profile?.stints || []);
@@ -517,7 +515,7 @@ export default function Preview(){
             return (
               <div key={d.id} className="text-center border" style={UI.row}>
                 <div className="text-xs opacity-80">{d.name}</div>
-                <div className="text-sm font-semibold">{h}h{pad(mm)}</div>
+                <div className="text-sm font-semibold">{h}h{String(mm).padStart(2,'0')}</div>
               </div>
             );
           })}
