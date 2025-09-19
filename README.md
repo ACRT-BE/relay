@@ -1,9 +1,9 @@
 
 # Kart Relay (Next.js + Supabase)
 
-Application mobile-first pour organiser les relais karting. Format 24h strict, multi-équipes, courses, pilotes, couleurs, surbrillance du relais en cours.
+Mobile-first, format 24h, multi-équipes, tri chrono, surbrillance relais en cours, palette 10 couleurs, équilibrage par pilote.
 
-## Lancement local
+## Démarrer
 ```bash
 npm i
 cp .env.local.example .env.local
@@ -11,14 +11,13 @@ npm run dev
 ```
 
 ## Vercel
-- Importer le repo, framework auto: Next.js.
+- Importer le repo ; framework auto: Next.js.
 - Variables d'env (optionnel, pour persistance Supabase) :
   - `NEXT_PUBLIC_SUPABASE_URL`
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- Pour forcer la **démo** même avec Supabase : `NEXT_PUBLIC_FORCE_DEMO=1`
+- Pour **voir la démo en prod** même avec Supabase configuré: `NEXT_PUBLIC_FORCE_DEMO=1`.
 
-## Seed automatique Supabase
-Au premier démarrage avec Supabase, si la table `teams` est **vide**, l'app **insère automatiquement** les données de démo (Équipe A/B, pilotes, courses, relais).
-
-## Seed manuel (SQL)
-Utilisez `seed-demo.sql` dans le SQL Editor Supabase si vous préférez.
+## Supabase
+1) Exécuter **supabase-schema.sql** dans le SQL Editor (création des tables + RLS permissif).
+2) (Optionnel) Exécuter **seed-demo.sql** pour insérer Équipe A/B, pilotes, courses, relais.
+3) Mettre `NEXT_PUBLIC_FORCE_DEMO=0` pour utiliser la base.

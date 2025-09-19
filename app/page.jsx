@@ -16,7 +16,7 @@ const UI = {
 };
 
 function pad(n){ return String(n).padStart(2,'0'); }
-function parseHM(dateStr, hm){ const [h='0',m='0']=String(h||'').split(':'); const d=new Date(dateStr+'T00:00:00'); d.setHours(+h||0, +m||0, 0,0); return d; }
+function parseHM(dateStr, hm){ const [h='0',m='0']=String(hm||'').split(':'); const d=new Date(dateStr+'T00:00:00'); d.setHours(+h||0, +m||0, 0,0); return d; }
 function addMin(d, min){ const x=new Date(d); x.setMinutes(x.getMinutes()+min); return x; }
 function fmtHM(d){ return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 function minutesBetween(a,b){ return Math.max(0, Math.round((b.getTime()-a.getTime())/60000)); }
@@ -29,46 +29,50 @@ function allowPartialHHmm(s){ if (s === '') return true; if (s.length > 5) retur
 function makeTeamA(){ return { id:'teamA', name:'Équipe A', currentRaceId:'A3',
   races:[ {id:'A1',name:'Qualification',type:'qualifying',date:'2025-09-19',start:'11:00',end:'11:20'}, {id:'A2',name:'Sprint',type:'sprint',date:'2025-09-19',start:'12:00',end:'12:15'}, {id:'A3',name:'Course 1',type:'race',date:'2025-09-19',start:'13:05',end:'14:00'} ],
   drivers:[ {id:'a1',name:'Alice',color:'#49abff'}, {id:'a2',name:'Bob',color:'#f59e0b'}, {id:'a3',name:'Claire',color:'#22c55e'} ],
-  stints:[ {id:'sa1', race_id:'A3', driverId:'a1', dur:10, pos:0}, {id:'sa2', race_id:'A3', driverId:'a2', dur:12, pos:1}, {id:'sa3', race_id:'A3', driverId:'a3', dur:15, pos:2}, {id:'sa4', race_id:'A3', driverId:'a1', dur:8, pos:3} ]
+  stints:[ {id:'sa1',race_id:'A3',driverId:'a1',dur:10,pos:0}, {id:'sa2',race_id:'A3',driverId:'a2',dur:12,pos:1}, {id:'sa3',race_id:'A3',driverId:'a3',dur:15,pos:2}, {id:'sa4',race_id:'A3',driverId:'a1',dur:8,pos:3} ]
 };}
 function makeTeamB(){ return { id:'teamB', name:'Équipe B', currentRaceId:'B2',
   races:[ {id:'B1',name:'Libre',type:'practice',date:'2025-09-19',start:'10:00',end:'10:30'}, {id:'B2',name:'Course',type:'race',date:'2025-09-19',start:'15:00',end:'16:00'} ],
   drivers:[ {id:'b1',name:'Diego',color:'#3b82f6'}, {id:'b2',name:'Emma',color:'#ec4899'} ],
-  stints:[ {id:'sb1', race_id:'B2', driverId:'b1', dur:20, pos:0}, {id:'sb2', race_id:'B2', driverId:'b2', dur:20, pos:1}, {id:'sb3', race_id:'B2', driverId:'b1', dur:20, pos:2} ]
+  stints:[ {id:'sb1',race_id:'B2',driverId:'b1',dur:20,pos:0}, {id:'sb2',race_id:'B2',driverId:'b2',dur:20,pos:1}, {id:'sb3',race_id:'B2',driverId:'b1',dur:20,pos:2} ]
 };}
 
 async function seedDemoToSupabase(){
-  const { count } = await supabase.from('teams').select('*', { count: 'exact', head: true });
-  if ((count ?? 0) > 0) return;
-  const { data: tA } = await supabase.from('teams').insert({ name:'Équipe A', slug:'equipe-a' }).select().single();
-  const { data: tB } = await supabase.from('teams').insert({ name:'Équipe B', slug:'equipe-b' }).select().single();
-  const driversA = [ { name:'Alice', color:'#49abff' }, { name:'Bob', color:'#f59e0b' }, { name:'Claire', color:'#22c55e' } ];
-  const driversB = [ { name:'Diego', color:'#3b82f6' }, { name:'Emma', color:'#ec4899' } ];
-  const { data: dA } = await supabase.from('drivers').insert(driversA.map(x=>({ team_id: tA.id, ...x }))).select();
-  const { data: dB } = await supabase.from('drivers').insert(driversB.map(x=>({ team_id: tB.id, ...x }))).select();
-  const racesA = [
-    { name:'Qualification', type:'qualifying', date:'2025-09-19', start:'11:00', finish:'11:20' },
-    { name:'Sprint',        type:'sprint',     date:'2025-09-19', start:'12:00', finish:'12:15' },
-    { name:'Course 1',      type:'race',       date:'2025-09-19', start:'13:05', finish:'14:00' },
-  ].map(x=>({ team_id: tA.id, ...x }));
-  const racesB = [
-    { name:'Libre',  type:'practice', date:'2025-09-19', start:'10:00', finish:'10:30' },
-    { name:'Course', type:'race',     date:'2025-09-19', start:'15:00', finish:'16:00' },
-  ].map(x=>({ team_id: tB.id, ...x }));
-  const { data: rA } = await supabase.from('races').insert(racesA).select();
-  const { data: rB } = await supabase.from('races').insert(racesB).select();
-  const mapBy = (arr, key='name') => Object.fromEntries((arr||[]).map(x=>[x[key], x]));
-  const dAMap = mapBy(dA, 'name'); const dBMap = mapBy(dB, 'name');
-  const rAMap = mapBy(rA, 'name'); const rBMap = mapBy(rB, 'name');
-  await supabase.from('stints').insert([
-    { race_id: rAMap['Course 1'].id, driver_id: dAMap['Alice'].id,  duration_minutes: 10, pos: 0 },
-    { race_id: rAMap['Course 1'].id, driver_id: dAMap['Bob'].id,    duration_minutes: 12, pos: 1 },
-    { race_id: rAMap['Course 1'].id, driver_id: dAMap['Claire'].id, duration_minutes: 15, pos: 2 },
-    { race_id: rAMap['Course 1'].id, driver_id: dAMap['Alice'].id,  duration_minutes:  8, pos: 3 },
-    { race_id: rBMap['Course'].id,   driver_id: dBMap['Diego'].id,  duration_minutes: 20, pos: 0 },
-    { race_id: rBMap['Course'].id,   driver_id: dBMap['Emma'].id,   duration_minutes: 20, pos: 1 },
-    { race_id: rBMap['Course'].id,   driver_id: dBMap['Diego'].id,  duration_minutes: 20, pos: 2 },
-  ]);
+  try{
+    const { count } = await supabase.from('teams').select('*', { count: 'exact', head: true });
+    if ((count ?? 0) > 0) return;
+    const { data: tA } = await supabase.from('teams').insert({ name:'Équipe A', slug:'equipe-a' }).select().single();
+    const { data: tB } = await supabase.from('teams').insert({ name:'Équipe B', slug:'equipe-b' }).select().single();
+    const driversA = [ { name:'Alice', color:'#49abff' }, { name:'Bob', color:'#f59e0b' }, { name:'Claire', color:'#22c55e' } ];
+    const driversB = [ { name:'Diego', color:'#3b82f6' }, { name:'Emma', color:'#ec4899' } ];
+    const { data: dA } = await supabase.from('drivers').insert(driversA.map(x=>({ team_id: tA.id, ...x }))).select();
+    const { data: dB } = await supabase.from('drivers').insert(driversB.map(x=>({ team_id: tB.id, ...x }))).select();
+    const racesA = [
+      { name:'Qualification', type:'qualifying', date:'2025-09-19', start:'11:00', finish:'11:20' },
+      { name:'Sprint',        type:'sprint',     date:'2025-09-19', start:'12:00', finish:'12:15' },
+      { name:'Course 1',      type:'race',       date:'2025-09-19', start:'13:05', finish:'14:00' },
+    ].map(x=>({ team_id: tA.id, ...x }));
+    const racesB = [
+      { name:'Libre',  type:'practice', date:'2025-09-19', start:'10:00', finish:'10:30' },
+      { name:'Course', type:'race',     date:'2025-09-19', start:'15:00', finish:'16:00' },
+    ].map(x=>({ team_id: tB.id, ...x }));
+    const { data: rA } = await supabase.from('races').insert(racesA).select();
+    const { data: rB } = await supabase.from('races').insert(racesB).select();
+    const by = (arr, k) => Object.fromEntries((arr||[]).map(x=>[x[k], x]));
+    const dAMap = by(dA,'name'), dBMap = by(dB,'name'), rAMap = by(rA,'name'), rBMap = by(rB,'name');
+    await supabase.from('stints').insert([
+      { race_id: rAMap['Course 1'].id, driver_id: dAMap['Alice'].id,  duration_minutes: 10, pos: 0 },
+      { race_id: rAMap['Course 1'].id, driver_id: dAMap['Bob'].id,    duration_minutes: 12, pos: 1 },
+      { race_id: rAMap['Course 1'].id, driver_id: dAMap['Claire'].id, duration_minutes: 15, pos: 2 },
+      { race_id: rAMap['Course 1'].id, driver_id: dAMap['Alice'].id,  duration_minutes:  8, pos: 3 },
+      { race_id: rBMap['Course'].id,   driver_id: dBMap['Diego'].id,  duration_minutes: 20, pos: 0 },
+      { race_id: rBMap['Course'].id,   driver_id: dBMap['Emma'].id,   duration_minutes: 20, pos: 1 },
+      { race_id: rBMap['Course'].id,   driver_id: dBMap['Diego'].id,  duration_minutes: 20, pos: 2 },
+    ]);
+  } catch (e) {
+    console.error('Seed error -> will fallback to demo', e);
+    throw e;
+  }
 }
 
 export default function Page(){
@@ -84,7 +88,7 @@ export default function Page(){
         setProfiles([A,B]); setProfileId('teamA'); return;
       }
       try { await seedDemoToSupabase(); await loadFromSupabase(); }
-      catch (e) { console.error('fallback to demo due to error:', e); const A = makeTeamA(); const B = makeTeamB(); setProfiles([A,B]); setProfileId('teamA'); }
+      catch (e) { const A = makeTeamA(); const B = makeTeamB(); setProfiles([A,B]); setProfileId('teamA'); }
     })();
   }, []);
 
@@ -165,41 +169,43 @@ export default function Page(){
   useEffect(()=>{ const t=setInterval(()=>setNow(new Date()), 30000); return ()=>clearInterval(t); },[]);
 
   const computedState = useMemo(()=>{
-    if (!currentRace) return { items: [], totalMinutes: 0 };
-    const start = parseHM(raceDate, raceTime);
-    const end   = parseHM(raceDate, raceEndTime);
-    const items = [];
-    let cursor = start;
-    for (let i=0;i<stints.length;i++){
-      const s = stints[i];
-      if (cursor >= end) break;
-      const d = drivers.find(x=>x.id===s.driverId) || {id:'-', name:'Non assigné', color:'#888'};
-      const sStart = new Date(cursor);
-      const sEndTarget = addMin(sStart, s.dur);
-      const sEnd = sEndTarget > end ? end : sEndTarget;
-      const shown = Math.max(0, minutesBetween(sStart, sEnd));
-      items.push({ idx: items.length+1, startD: sStart, endD: sEnd, start: fmtHM(sStart), end: fmtHM(sEnd), dur: shown, driver: d, id: s.id });
-      cursor = sEndTarget;
+    try {
+      if (!currentRace) return { items: [], totalMinutes: 0 };
+      const start = parseHM(raceDate, raceTime);
+      const end   = parseHM(raceDate, raceEndTime);
+      const items = []; let cursor = start;
+      for (let i=0;i<stints.length;i++){
+        const s = stints[i]; if (cursor >= end) break;
+        const d = drivers.find(x=>x.id===s.driverId) || {id:'-', name:'Non assigné', color:'#888'};
+        const sStart = new Date(cursor); const sEndTarget = addMin(sStart, s.dur);
+        const sEnd = sEndTarget > end ? end : sEndTarget;
+        const shown = Math.max(0, minutesBetween(sStart, sEnd));
+        items.push({ idx: items.length+1, startD: sStart, endD: sEnd, start: fmtHM(sStart), end: fmtHM(sEnd), dur: shown, driver: d, id: s.id ?? ('i'+i) });
+        cursor = sEndTarget;
+      }
+      return { items, totalMinutes: minutesBetween(start, end) };
+    } catch (e) {
+      console.error('computedState error', e);
+      return { items: [], totalMinutes: 0 };
     }
-    return { items, totalMinutes: minutesBetween(start, end) };
   }, [raceDate, raceTime, raceEndTime, stints, drivers, currentRace]);
 
   const driverTotals = useMemo(()=>{ const map = {}; computedState.items.forEach(it => { map[it.driver.id] = (map[it.driver.id]||0) + it.dur; }); return map; }, [computedState]);
 
-  function move(i, dir){ const j=i+dir; if(j<0||j>=stints.length) return; const copy=[...stints]; [copy[i],copy[j]]=[copy[j],copy[i]]; copy.forEach((s,idx)=>s.pos=idx); setStints(copy); if (hasSupabase){ copy.forEach(s => { supabase.from('stints').update({ pos: s.pos }).eq('id', s.id).then(()=>{}); } ) } }
-  function changeDur(i, v){ if(!Number.isFinite(v)||v<1) return; const copy=[...stints]; copy[i]={...copy[i], dur:v}; setStints(copy); if (hasSupabase){ const s = copy[i]; supabase.from('stints').update({ duration_minutes: s.dur }).eq('id', s.id).then(()=>{}); } }
-  function assignDriver(i, id){ const copy=[...stints]; copy[i]={...copy[i], driverId:id}; setStints(copy); if (hasSupabase){ const s = copy[i]; supabase.from('stints').update({ driver_id: id }).eq('id', s.id).then(()=>{}); } }
-  function setDriverColor(id, color){ setDrivers(ds=>ds.map(d=>d.id===id?{...d,color}:d)); if (hasSupabase){ supabase.from('drivers').update({ color }).eq('id', id).then(()=>{}); } setEditingDriverId(null); }
+  function move(i, dir){ const j=i+dir; if(j<0||j>=stints.length) return; const copy=[...stints]; [copy[i],copy[j]]=[copy[j],copy[i]]; copy.forEach((s,idx)=>s.pos=idx); setStints(copy); if (hasSupabase){ copy.forEach(s => { if(s.id) supabase.from('stints').update({ pos: s.pos }).eq('id', s.id); }); } }
+  function changeDur(i, v){ if(!Number.isFinite(v)||v<1) return; const copy=[...stints]; copy[i]={...copy[i], dur:v}; setStints(copy); if (hasSupabase){ const s = copy[i]; if(s?.id) supabase.from('stints').update({ duration_minutes: s.dur }).eq('id', s.id); } }
+  function assignDriver(i, id){ const copy=[...stints]; copy[i]={...copy[i], driverId:id}; setStints(copy); if (hasSupabase){ const s = copy[i]; if(s?.id) supabase.from('stints').update({ driver_id: id }).eq('id', s.id); } }
+  function setDriverColor(id, color){ setDrivers(ds=>ds.map(d=>d.id===id?{...d,color}:d)); if (hasSupabase){ supabase.from('drivers').update({ color }).eq('id', id); } setEditingDriverId(null); }
 
   async function addNewDriver(){ const name = (newDriverName||'').trim(); if(!name) return; const color = newDriverColor || PALETTE[0]; if (hasSupabase){ const { data } = await supabase.from('drivers').insert({ team_id: profileId, name, color }).select().single(); if (data){ setDrivers(prev=>[...prev, { id: data.id, name, color }]); } } else { const id = 'd' + Math.random().toString(36).slice(2,8); setDrivers(prev=>[...prev, { id, name, color }]); } setAddingDriver(false); setNewDriverName(''); setNewDriverColor(PALETTE[((drivers?.length||0)+1)%PALETTE.length]||PALETTE[0]); }
 
-  function balancePerDriver(){ if (stints.length === 0) return; const driverIds = Array.from(new Set(stints.map(s=>s.driverId))); const perDriverTarget = Math.max(1, Math.round(computedState.totalMinutes / Math.max(1, driverIds.length))); const idxsByDriver = {}; stints.forEach((s,idx)=>{ (idxsByDriver[s.driverId]||(idxsByDriver[s.driverId]=[])).push(idx); }); const next=[...stints]; driverIds.forEach(id=>{ const idxs = idxsByDriver[id]||[]; if (idxs.length===0) return; const base = Math.max(1, Math.floor(perDriverTarget/idxs.length)); const delta = perDriverTarget - base*idxs.length; idxs.forEach((i,k)=>{ let dur=base; if(k===idxs.length-1) dur=Math.max(1, base+delta); next[i]={...next[i], dur}; }); }); setStints(next); if (hasSupabase){ next.forEach(s => supabase.from('stints').update({ duration_minutes: s.dur }).eq('id', s.id)); } }
+  function balancePerDriver(){ if (stints.length === 0) return; const driverIds = Array.from(new Set(stints.map(s=>s.driverId))); const perDriverTarget = Math.max(1, Math.round(computedState.totalMinutes / Math.max(1, driverIds.length))); const idxsByDriver = {}; stints.forEach((s,idx)=>{ (idxsByDriver[s.driverId]||(idxsByDriver[s.driverId]=[])).push(idx); }); const next=[...stints]; driverIds.forEach(id=>{ const idxs = idxsByDriver[id]||[]; if (idxs.length===0) return; const base = Math.max(1, Math.floor(perDriverTarget/idxs.length)); const delta = perDriverTarget - base*idxs.length; idxs.forEach((i,k)=>{ let dur=base; if(k===idxs.length-1) dur=Math.max(1, base+delta); next[i]={...next[i], dur}; }); }); setStints(next); if (hasSupabase){ next.forEach(s => { if(s?.id) supabase.from('stints').update({ duration_minutes: s.dur }).eq('id', s.id); }); } }
 
   function onTimeChange(value, setTmp, setFinal){ if (!allowPartialHHmm(value)) return; setTmp(value); if (value.length===5 && isValidHHmm(value)) setFinal(value); }
 
   async function deleteCurrentRace(){ if (!currentRace) return; if (!confirm('Supprimer cette course ?')) return; if (hasSupabase) await supabase.from('races').delete().eq('id', currentRace.id); const races = (profile.races||[]).filter(r=>r.id!==currentRace.id); const nextCR = races.slice().sort((a,b)=>parseHM(a.date,a.start)-parseHM(b.date,b.start))[0]; upsertProfile({ races, currentRaceId: nextCR?nextCR.id:'' }); setCurrentRaceId(nextCR?nextCR.id:''); }
 
-  async function addNewRace(){ const name = (newRaceName||'').trim(); if (!name) return; if (!isValidHHmm(newRaceStart) || !isValidHHmm(newRaceEnd)) return; if (hasSupabase){ const { data } = await supabase.from('races').insert({ team_id: profileId, name, type: newRaceType, date: newRaceDate, start: newRaceStart, finish: newRaceEnd }).select().single(); if (data){ const newRace = { id: data.id, name, type:newRaceType, date:newRaceDate, start:newRaceStart, end:newRaceEnd }; const races = [ ...(profile.races||[]), newRace ]; upsertProfile({ races, currentRaceId: data.id }); setCurrentRaceId(data.id); } } else { const id = 'N' + Math.random().toString(36).slice(2,8); const newRace = { id, name, type:newRaceType, date:newRaceDate, start:newRaceStart, end:newRaceEnd }; const races = [ ...(profile.races||[]), newRace ]; upsertProfile({ races, currentRaceId: id }); setCurrentRaceId(id); } }
+  function addNewRace(){ const name = (newRaceName||'').trim(); if (!name) return; if (!isValidHHmm(newRaceStart) || !isValidHHmm(newRaceEnd)) return; if (hasSupabase){ supabase.from('races').insert({ team_id: profileId, name, type: newRaceType, date: newRaceDate, start: newRaceStart, finish: newRaceEnd }).select().single().then(({ data })=>{ if (data){ const newRace = { id: data.id, name, type:newRaceType, date:newRaceDate, start:newRaceStart, end:newRaceEnd }; const races = [ ...(profile.races||[]), newRace ]; upsertProfile({ races, currentRaceId: data.id }); setCurrentRaceId(data.id); } }); } else { const id = 'N' + Math.random().toString(36).slice(2,8); const newRace = { id, name, type:newRaceType, date:newRaceDate, start:newRaceStart, end:newRaceEnd }; const races = [ ...(profile.races||[]), newRace ]; upsertProfile({ races, currentRaceId: id }); setCurrentRaceId(id); } }
 
   function switchTeam(id){ setProfileId(id); }
 
@@ -210,7 +216,7 @@ export default function Page(){
       <header className="mb-3">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">🏁 Kart Relay</h1>
-          <span className="text-xs opacity-70">{hasSupabase ? 'Supabase' : 'Local'}</span>
+          <span className="text-xs opacity-70">{hasSupabase ? 'Supabase' : 'Demo locale'}</span>
         </div>
 
         <div className="mt-2 flex gap-2 overflow-x-auto pb-2 items-center">
