@@ -297,7 +297,7 @@ export default function Preview(){
   function deleteCurrentRace(){
     if (!currentRace) return;
     const races = (profile.races||[]).filter(r=>r.id!==currentRace.id);
-    const nextCR = races slice().sort((a,b)=>parseHM(a.date,a.start)-parseHM(b.date,b.start))[0];
+    const nextCR = races.slice().sort((a,b)=>parseHM(a.date,a.start)-parseHM(b.date,b.start))[0];
     upsertProfile({ races, currentRaceId: nextCR?nextCR.id:'' });
     setCurrentRaceId(nextCR?nextCR.id:'');
   }
@@ -338,8 +338,249 @@ export default function Preview(){
           <h1 className="text-2xl font-bold">🏁 Kart Relay</h1>
           <span className="text-xs opacity-70">Aperçu</span>
         </div>
-        {/* ... content omitted for brevity in this file ... */}
+
+        {/* Teams selector with inline rename */}
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-2 items-center">
+          {profiles.map(p => (
+            editingTeamId===p.id ? (
+              <div key={p.id} style={{...UI.chipInactive, display:'flex', gap:6, alignItems:'center'}}>
+                <input autoFocus value={tmpTeamName} onChange={e=>setTmpTeamName(e.target.value)} onKeyDown={(e)=>{ if(e.key==='Enter') commitEditTeam(); if(e.key==='Escape'){ setEditingTeamId(null); setTmpTeamName(''); } }} onBlur={commitEditTeam} style={{...UI.input, padding:'6px 8px', height:32}} />
+                <button onClick={commitEditTeam} style={{...UI.ghostIcon, padding:'4px 8px'}}>OK</button>
+              </div>
+            ) : (
+              <div key={p.id} style={{display:'flex', gap:6, alignItems:'center'}}>
+                <button onClick={()=>switchTeam(p.id)} style={p.id===profileId?UI.chipActive:UI.chipInactive} className="whitespace-nowrap">
+                  {p.name}
+                </button>
+                {p.id===profileId && (
+                  <>
+                    <button aria-label="Renommer l'équipe" onClick={()=>startEditTeam(p.id, p.name)} style={UI.ghostIcon}>✎</button>
+                    <button aria-label="Supprimer l'équipe" onClick={()=>deleteTeam(p.id)} style={{...UI.ghostIcon, borderColor:'#ef4444', color:'#ef4444'}}>🗑</button>
+                  </>
+                )}
+              </div>
+            )
+          ))}
+          {/* Add team button */}
+          <button aria-label="Nouvelle équipe" onClick={addTeam} style={{...UI.chipInactive, fontWeight:800}}>+</button>
+        </div>
+
+        {/* Liste des courses triées chrono */}
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-2">
+          {sortedRaces.map(r => (
+            <button key={r.id}
+              onClick={()=>{ setCurrentRaceId(r.id); upsertProfile({ currentRaceId: r.id }); }}
+              style={r.id===(currentRace&&currentRace.id)?UI.chipActive:UI.chipInactive}
+              className="whitespace-nowrap"
+              title={`${r.name} • ${r.date} ${r.start}-${r.end}`}
+            >
+              <span style={{fontWeight:600}}>{r.start}</span> <span style={{opacity:0.8}}>{r.name}</span>
+            </button>
+          ))}
+        </div>
       </header>
+
+      {/* Planning des relais */}
+      <section style={UI.panel} className="space-y-3 mb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-slate-300">Course</div>
+            {currentRace ? (
+              <>
+                <div className="font-semibold">{raceName}</div>
+                <div className="text-sm text-slate-400">
+                  {raceType} • départ <span className="font-semibold text-white">{raceTime}</span>
+                  <span className="mx-1">—</span>
+                  fin <span className="font-semibold text-white">{raceEndTime}</span>
+                  <span className="ml-2 text-xs text-slate-400">({Math.floor(computedState.totalMinutes/60)}h{pad(computedState.totalMinutes%60)})</span>
+                </div>
+              </>
+            ) : (
+              <div className="text-sm text-slate-400">Aucune course pour cette équipe pour l'instant.</div>
+            )}
+          </div>
+          <button className="px-4 py-2 rounded-2xl" style={{background:'#1f85ff'}} disabled={!currentRace} onClick={addStint}>+ Relais</button>
+        </div>
+
+        {(currentRace?computedState.items:[]).map((s, i) => {
+          const sameDay = (a,b)=> a.toDateString()===b.toDateString();
+          const startD = parseHM(raceDate, raceTime);
+          const active = sameDay(now, startD) && now >= s.startD && now < s.endD;
+          return (
+            <div key={s.idx} className="flex items-center gap-2 border" style={{...(active?UI.rowActive:UI.row), flexWrap:'wrap', alignItems:'stretch'}}>
+              <div className="w-10 text-center text-xs opacity-70" style={{alignSelf:'center'}}>#{s.idx}</div>
+              <div style={{width:6, borderRadius:4, backgroundColor:s.driver.color}} />
+
+              {/* Main content takes priority */}
+              <div className="flex-1" style={{minWidth:180}}>
+                <div style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+                  <div style={{fontSize:20, fontWeight:900, lineHeight:1.1}}>{s.start} – {s.end}</div>
+                  {active && (
+                    <span style={{fontSize:10, fontWeight:800, letterSpacing:1, padding:'4px 6px', borderRadius:999, background:'rgba(239,68,68,0.15)', border:'1px solid #ef4444', color:'#ef4444'}}>EN COURS</span>
+                  )}
+                </div>
+                <div style={{marginTop:6, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap'}}>
+                  <div style={{display:'flex', alignItems:'center', gap:8}}>
+                    <span style={{width:10, height:10, borderRadius:'50%', backgroundColor:s.driver.color}} />
+                    <span style={{fontSize:18, fontWeight:800, color:s.driver.color}}>{s.driver.name}</span>
+                  </div>
+                  {/* Duration pill with +/- steppers (merged control) */}
+                  <div style={{display:'flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.10)', border:'1px solid rgba(255,255,255,0.10)', borderRadius:999, padding:'4px 8px'}}>
+                    <button aria-label="-1 minute" onClick={()=>nudgeDur(i,-1)} style={{...UI.ghostIcon, padding:'2px 8px'}}>−</button>
+                    <span style={{fontWeight:800}}>{s.dur} min</span>
+                    <button aria-label="+1 minute" onClick={()=>nudgeDur(i, 1)} style={{...UI.ghostIcon, padding:'2px 8px'}}>+</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Discreet contextual menu */}
+              <div style={{display:'flex', gap:8, alignItems:'center'}}>
+                <button aria-label="Options" onClick={()=>toggleMenu(s.idx)} style={{...UI.ghostIcon}}>⋯</button>
+              </div>
+
+              {openMenuIdx===s.idx && (
+                <div style={{width:'100%', marginTop:8, padding:8, border:'1px dashed rgba(255,255,255,0.15)', borderRadius:12, display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
+                  <label style={{fontSize:12, opacity:0.8}}>Pilote</label>
+                  <select style={{...UI.input, padding:'6px 10px'}} className="text-sm" value={stints[i].driverId} onChange={e=>assignDriver(i, e.target.value)}>
+                    {drivers.map(dr => <option key={dr.id} value={dr.id}>{dr.name}</option>)}
+                  </select>
+                  <div style={{flexGrow:1}} />
+                  <div style={{display:'flex', gap:8}}>
+                    <button title="Monter" style={UI.ghostIcon} onClick={()=>move(i,-1)}>↑</button>
+                    <button title="Descendre" style={UI.ghostIcon} onClick={()=>move(i, 1)}>↓</button>
+                    <button title="Supprimer" style={{...UI.ghostIcon, borderColor:'#ef4444', color:'#ef4444'}} onClick={()=>deleteStint(i)}>✕</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Résumé par pilote */}
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {drivers.map(d => {
+            const m = driverTotals[d.id]||0; const h = Math.floor(m/60), mm = m%60;
+            return (
+              <div key={d.id} className="text-center border" style={UI.row}>
+                <div className="text-xs opacity-80">{d.name}</div>
+                <div className="text-sm font-semibold">{h}h{pad(mm)}</div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Sélection / édition (sous "Course") */}
+      <section style={UI.panel} className="space-y-2 mb-3">
+        <div className="flex items-center justify-between">
+          <div className="text-xs uppercase tracking-wide text-slate-300">Sélectionner / éditer la course</div>
+          <div className="flex gap-2">
+            <button className="px-3 py-1.5 rounded-xl border" style={{background:'#1f85ff', borderColor:'#1f85ff'}} onClick={scrollToCreate}>+ Nouvelle</button>
+            {currentRace && (
+              <button className="px-3 py-1.5 rounded-xl border" style={{background:'#ef4444', borderColor:'#ef4444'}} onClick={deleteCurrentRace}>Supprimer la course</button>
+            )}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <select style={{...UI.input, gridColumn:'1 / -1'}} value={currentRaceId} onChange={e=>setCurrentRaceId(e.target.value)}>
+            {sortedRaces.map(r => (
+              <option key={r.id} value={r.id}>{r.date + ' • ' + r.start + ' — ' + r.name}</option>
+            ))}
+          </select>
+          <input style={UI.input} value={raceName} onChange={e=>setRaceName(e.target.value)} />
+          <select style={UI.input} value={raceType} onChange={e=>setRaceType(e.target.value)}>
+            <option value="practice">Entrainement</option>
+            <option value="qualifying">Qualification</option>
+            <option value="sprint">Sprint</option>
+            <option value="race">Course</option>
+            <option value="endurance">Endurance</option>
+          </select>
+          <input style={UI.input} type="date" value={raceDate} onChange={e=>setRaceDate(e.target.value)} />
+          <input style={UI.input} type="text" inputMode="numeric" placeholder="HH:mm" value={tmpRaceTime} onChange={e=>onTimeChange(e.target.value, setTmpRaceTime, setRaceTime)} onBlur={()=>{ if (!isValidHHmm(tmpRaceTime)) setTmpRaceTime(raceTime); }} />
+          <input style={UI.input} type="text" inputMode="numeric" placeholder="HH:mm" value={tmpRaceEndTime} onChange={e=>onTimeChange(e.target.value, setTmpRaceEndTime, setRaceEndTime)} onBlur={()=>{ if (!isValidHHmm(tmpRaceEndTime)) setTmpRaceEndTime(raceEndTime); }} />
+        </div>
+      </section>
+
+      {/* Actions rapides */}
+      <section style={UI.panel} className="mb-3">
+        <div className="text-xs uppercase tracking-wide text-slate-300 mb-2">Actions rapides</div>
+        <div className="flex gap-2 flex-wrap">
+          <button className="px-4 py-2" style={UI.muted} onClick={balancePerDriver}>Équilibrer par pilote (temps total égal sur la journée)</button>
+          <button className="px-4 py-2" style={UI.muted} onClick={()=>setStints(s=>[...s].reverse())}>Inverser l'ordre</button>
+        </div>
+      </section>
+
+      {/* Pilotes */}
+      <section style={UI.panel}>
+        <div className="flex items-center justify-between">
+          <div className="text-xs uppercase tracking-wide text-slate-300 mb-2">Pilotes</div>
+          <button onClick={()=>{ setAddingDriver(v=>!v); setNewDriverColor(PALETTE[(drivers.length)%PALETTE.length]||PALETTE[0]); }} style={UI.ghostIcon}>+ Pilote</button>
+        </div>
+
+        {addingDriver && (
+          <div className="mb-3" style={{display:'flex', gap:8, flexWrap:'wrap', alignItems:'center'}}>
+            <input style={{...UI.input, height:40, flex:'1 1 140px'}} placeholder="Nom du pilote" value={newDriverName} onChange={e=>setNewDriverName(e.target.value)} />
+            <div style={{display:'flex', gap:6, alignItems:'center'}}>
+              {PALETTE.map(c => (
+                <button key={c} title={c} onClick={()=>setNewDriverColor(c)} style={{height:22, width:22, borderRadius:6, backgroundColor:c, boxShadow: `0 0 0 ${newDriverColor===c?3:1}px rgba(255,255,255,${newDriverColor===c?0.9:0.2})`}} />
+              ))}
+            </div>
+            <button onClick={addNewDriver} disabled={!newDriverName.trim()} style={{...UI.chipActive, opacity: newDriverName.trim()?1:0.6}}>Ajouter</button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-2">
+          {(drivers||[]).map((d)=> (
+            <div key={d.id} style={UI.row}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <button onClick={()=>setEditingDriverId(editingDriverId===d.id?null:d.id)} className="h-4 w-4 rounded" style={{backgroundColor:d.color, boxShadow:'0 0 0 1px rgba(255,255,255,0.2)'}} title="Changer couleur" />
+                  {/* inline rename */}
+                  <RenameDriver d={d} setDrivers={setDrivers} />
+                </div>
+                <button className="px-3 py-2" style={{background:'#ef4444', borderRadius:16}}>Suppr</button>
+              </div>
+              {editingDriverId===d.id && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {PALETTE.map(c => (
+                    <button key={c} className="h-6 w-6 rounded" style={{backgroundColor:c, boxShadow:'0 0 0 2px rgba(255,255,255,0.1)'}} onClick={()=>setDriverColor(d.id, c)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Créer une course (bas de page) */}
+      <section id="create-race" style={{...UI.panel, marginTop:12}}>
+        <div className="text-xs uppercase tracking-wide text-slate-300">Créer une course</div>
+        <input style={{...UI.input, width:'100%', marginTop:8}} placeholder="Nom" value={newRaceName} onChange={e=>setNewRaceName(e.target.value)} />
+        <div className="flex gap-2 flex-wrap" style={{marginTop:8}}>
+          <select style={{...UI.input, flex:1}} value={newRaceType} onChange={e=>setNewRaceType(e.target.value)}>
+            <option value="qualifying">Qualification</option>
+            <option value="sprint">Sprint</option>
+            <option value="race">Course</option>
+            <option value="endurance">Endurance</option>
+            <option value="practice">Entrainement</option>
+          </select>
+          <input type="date" value={newRaceDate} onChange={e=>setNewRaceDate(e.target.value)} style={{...UI.input}} />
+          <input type="text" inputMode="numeric" placeholder="HH:mm (début)" value={tmpNewStart}
+                 onChange={e=>onTimeChange(e.target.value, setTmpNewStart, setNewRaceStart)}
+                 onBlur={()=>{ if (!isValidHHmm(tmpNewStart)) setTmpNewStart(newRaceStart); }}
+                 style={{...UI.input, width:'100%', flexBasis:'100%'}} />
+          <input type="text" inputMode="numeric" placeholder="HH:mm (fin)" value={tmpNewEnd}
+                 onChange={e=>onTimeChange(e.target.value, setTmpNewEnd, setNewRaceEnd)}
+                 onBlur={()=>{ if (!isValidHHmm(tmpNewEnd)) setTmpNewEnd(newRaceEnd); }}
+                 style={{...UI.input, width:'100%', flexBasis:'100%'}} />
+        </div>
+        <button className="px-4 py-2" onClick={addNewRace}
+                disabled={!newRaceName.trim() || !isValidHHmm(newRaceStart) || !isValidHHmm(newRaceEnd)}
+                style={{background:'#1f85ff', borderRadius:16, marginTop:8, opacity:(!newRaceName.trim() || !isValidHHmm(newRaceStart) || !isValidHHmm(newRaceEnd))?0.6:1}}>
+          + Nouvelle course
+        </button>
+      </section>
+
     </div>
   );
 }

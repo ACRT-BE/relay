@@ -1,14 +1,11 @@
 
-# 🏁 Kart Relay — v4a
+# 🏁 Kart Relay — v4c
 
-Next.js mobile-first pour organiser les relais.
-- Format 24h `HH:mm`
-- Multi-équipes / courses / pilotes
-- + Relais, suppression, durée +/-
-- Surbrillance du relais en cours
-- Tailwind inclus
+- Next.js 14 / React 18, Tailwind
+- Code = votre dernier aperçu (canvas) intégré
+- Format 24h HH:mm, multi-équipes, création/suppression de courses, relais, couleurs pilotes
 
-## Local
+## Démarrer
 npm i
 npm run dev
 
