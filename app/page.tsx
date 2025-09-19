@@ -192,9 +192,6 @@ export default function Preview(){
   const [newDriverName, setNewDriverName] = useState('');
   const [newDriverColor, setNewDriverColor] = useState(PALETTE[0]);
 
-  const [drivers, setDrivers] = useState(profile?.drivers || []);
-  const [stints, setStints] = useState(profile?.stints || []);
-
   const [openMenuIdx, setOpenMenuIdx] = useState(null);
   const toggleMenu = (idx)=> setOpenMenuIdx(openMenuIdx===idx?null:idx);
 
@@ -211,6 +208,8 @@ export default function Preview(){
     setRaceEndTime(currentRace.end); setTmpRaceEndTime(currentRace.end);
   }, [currentRaceId, profileId, currentRace]);
 
+  const [drivers, setDrivers] = useState(profile?.drivers || []);
+  const [stints, setStints] = useState(profile?.stints || []);
   useEffect(()=>{ 
     setDrivers(profile?.drivers || []); 
     setStints(profile?.stints || []);
@@ -263,13 +262,13 @@ export default function Preview(){
     })();
 
     const ch = supabase.channel('profiles-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload)=>{
-        const rec = payload.new || payload.old; if (!rec) return;
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload: any)=>{
+        const rec: any = (payload as any).new || (payload as any).old; if (!rec) return;
         applyingRemote.current = true;
         if (payload.eventType === 'DELETE'){
           setProfiles(prev=>prev.filter(p=>p.id!==rec.id));
         } else {
-          const row = payload.new;
+          const row: any = (payload as any).new;
           const merged = { id: row.id, name: row.name, ...(row.data||{}) };
           setProfiles(prev=>{
             const i = prev.findIndex(x=>x.id===row.id);
@@ -392,7 +391,10 @@ export default function Preview(){
     <div style={UI.app} className="mx-auto max-w-sm p-3">
       <header className="mb-3">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">🏁 Kart Relay</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">🏁 Kart Relay</h1>
+            <span className="text-[10px] font-semibold px-2 py-1 rounded-full" style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.2)'}}>Powered by ACRT</span>
+          </div>
           <span className="text-xs opacity-70">Aperçu</span>
         </div>
 
