@@ -1,41 +1,31 @@
-# Kart Relay App
 
-Interface mobile (Next.js + Supabase) pour organiser les relais des pilotes lors des courses de karting.
+# Kart Relay (Next.js + Supabase)
 
-## Fonctionnalités
-- Gestion des courses (qualification, sprint, finale, etc.)
-- Pilotes avec couleurs personnalisées
-- Relais (durée en minutes) et heures de passage calculées automatiquement
-- Édition en temps réel (ajout/suppression, permutation, drag via flèches, swap entre deux pilotes)
-- Sync en temps réel via Supabase Realtime
-- UI optimisée smartphone (TailwindCSS)
+Application mobile-first pour organiser les relais en karting : courses, pilotes, durées, ordre des relais, surbrillance du relais en cours, profils d'équipes multiples (renommage, ajout, suppression).
 
 ## Démarrage local
+
 ```bash
 npm i
-cp .env.example .env.local # puis renseignez vos variables
+cp .env.local.example .env.local
+# Remplissez NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY
 npm run dev
 ```
-Ouvrez http://localhost:3000
 
 ## Déploiement Vercel
-- Poussez le dépôt sur GitHub, importez sur Vercel.
-- Ajoutez les variables d'environnement `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY` dans Vercel.
-- Build command: `npm run build`
+
+1. Pousser ce repo sur GitHub.
+2. Sur Vercel, **Import Project** → Framework **Next.js**.
+3. Variables d'environnement (Project Settings → Environment Variables) :  
+   - `NEXT_PUBLIC_SUPABASE_URL`  
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+4. Déployer.
 
 ## Schéma Supabase
-Exécutez le SQL suivant dans le SQL Editor Supabase :
-```
-{
-schema_sql
-}
-```
 
-## Tables écoutées en temps réel
-- `drivers`
-- `races`
-- `stints`
+Exécutez `supabase-schema.sql` dans votre base (SQL Editor) pour créer les tables et contraintes. Des RLS simples sont incluses (lecture publique, écriture avec anon key — à adapter selon vos besoins).
 
 ## Notes
-- Le calcul des heures de passage se base sur `races.start_time` et la somme des durées des relais.
-- Les modifications sont optimistes côté client avec confirmation via Realtime.
+
+- Le format d'heure est **strictement `HH:mm`** côté UI (sans expressions régulières).
+- Si les variables Supabase ne sont pas configurées, l'app fonctionne en **local (in-memory)**.
