@@ -1,6 +1,23 @@
 'use client';
 import './globals.css';
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import { createClient } from '@supabase/supabase-js';
+
+// --- Supabase client (browser-safe env access) ---
+function getenv(name){
+  try { if (typeof process !== 'undefined' && process && process.env && process.env[name]) return process.env[name]; } catch (_){ }
+  try {
+    if (typeof window !== 'undefined'){
+      const w = window;
+      if (w.__ENV__ && w.__ENV__[name]) return w.__ENV__[name];
+      if (w[name]) return w[name];
+    }
+  } catch(_){ }
+  return '';
+}
+const SUPABASE_URL = getenv('NEXT_PUBLIC_SUPABASE_URL');
+const SUPABASE_KEY = getenv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+const supabase = (SUPABASE_URL && SUPABASE_KEY) ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 // ---------- UI helpers (inline styles only; no regex; no TS types) ----------
 const UI = {
@@ -54,19 +71,14 @@ function allowPartialHHmm(s){
   return true;
 }
 
-// ---- Runtime tests (keep tiny; no external libs) ----
+// ---- Runtime tests ----
 if (typeof window !== 'undefined') {
   try {
     const tests = [
-      // Valid full HH:mm
       ['00:00', true], ['09:59', true], ['23:59', true],
-      // Invalid full HH:mm
       ['24:00', false], ['16:60', false], ['7:5', false], ['1630', false], ['', false],
-      // Partial typing acceptance
       ['1', true], ['12', true], ['12:', true], ['12:3', true], ['12:34', true],
-      // Bad characters
       ['2a:30', false], ['12:a0', false],
-      // Edge new tests
       ['-1:00', false], ['23:5x', false], ['03:07', true], ['2:', false]
     ];
     console.groupCollapsed('HH:mm validation tests');
@@ -80,7 +92,7 @@ if (typeof window !== 'undefined') {
   } catch {}
 }
 
-// ===== Demo data for multi-team profiles =====
+// ===== Demo data =====
 function makeTeamA(){
   return {
     id: 'teamA', name: 'Équipe A',
@@ -108,21 +120,32 @@ function makeTeamB(){
 }
 
 export default function Preview(){
-  // ---- Profiles (teams) ----
-  const [profiles, setProfiles] = useState([ makeTeamA(), makeTeamB() ]);
+  const [profiles, setProfiles] = useState([]);
+  const profilesRef = useRef(profiles); useEffect(()=>{ profilesRef.current = profiles; }, [profiles]);
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(true);
   const [profileId, setProfileId] = useState('teamA');
   const [editingTeamId, setEditingTeamId] = useState(null);
   const [tmpTeamName, setTmpTeamName] = useState('');
+  const applyingRemote = useRef(false);
 
   const profile = useMemo(() => profiles.find(p=>p.id===profileId) || profiles[0], [profiles, profileId]);
 
   function startEditTeam(id, name){ setEditingTeamId(id); setTmpTeamName(name); }
-  function commitEditTeam(){
+  async function commitEditTeam(){
     const v = (tmpTeamName||'').trim();
-    if (v) setProfiles(prev=>prev.map(p=>p.id===editingTeamId?{...p,name:v}:p));
+    if (v){
+      setProfiles(prev=>prev.map(p=>p.id===editingTeamId?{...p,name:v}:p));
+      if (supabase){
+        const current = profiles.find(p=>p.id===editingTeamId);
+        if (current){
+          const row = { id: current.id, name: v, data: { races: current.races||[], currentRaceId: current.currentRaceId||'', drivers: current.drivers||[], stints: current.stints||[] } };
+          try{ await supabase.from('profiles').upsert(row); }catch{}
+        }
+      }
+    }
     setEditingTeamId(null); setTmpTeamName('');
   }
-  function addTeam(){
+  async function addTeam(){
     const id = 'team' + Math.random().toString(36).slice(2,8);
     const name = 'Nouvelle équipe';
     const newTeam = { id, name, races: [], currentRaceId: '', drivers: [], stints: [] };
@@ -130,26 +153,25 @@ export default function Preview(){
     setProfileId(id);
     setEditingTeamId(id);
     setTmpTeamName(name);
+    if (supabase){ try{ await supabase.from('profiles').upsert({ id, name, data: { races: [], currentRaceId: '', drivers: [], stints: [] } }); }catch{} }
   }
-  function deleteTeam(id){
+  async function deleteTeam(id){
     if (profiles.length <= 1) { alert('Impossible de supprimer la dernière équipe.'); return; }
     if (!confirm('Supprimer définitivement cette équipe ?')) return;
     const next = profiles.filter(p=>p.id!==id);
     setProfiles(next);
     if (editingTeamId===id){ setEditingTeamId(null); setTmpTeamName(''); }
     if (profileId===id){ setProfileId(next[0]?.id || ''); }
+    if (supabase){ try{ await supabase.from('profiles').delete().eq('id', id); }catch{} }
   }
 
-  // ---- Derive core states from current profile ----
   const sortedRaces = useMemo(() => {
     const arr = (profile?.races || []).slice();
     arr.sort((a,b)=>parseHM(a.date,a.start).getTime()-parseHM(b.date,b.start).getTime());
     return arr;
   }, [profile]);
   const [currentRaceId, setCurrentRaceId] = useState(profile?.currentRaceId || (sortedRaces[0]?.id || ''));
-
   useEffect(()=>{ setCurrentRaceId(profile?.currentRaceId || (sortedRaces[0]?.id || '')); }, [profileId, profile, sortedRaces]);
-
   const currentRace = useMemo(()=> sortedRaces.find(r=>r.id===currentRaceId) || sortedRaces[0] || null, [sortedRaces, currentRaceId]);
 
   const [raceName, setRaceName] = useState(currentRace ? currentRace.name : '');
@@ -160,33 +182,24 @@ export default function Preview(){
   const [raceEndTime, setRaceEndTime] = useState(currentRace ? currentRace.end : '14:00');
   const [tmpRaceEndTime, setTmpRaceEndTime] = useState(raceEndTime);
 
-  // ---- New race (Créer une course) controlled inputs ----
   const [newRaceName, setNewRaceName] = useState('Course 2');
-  const [newRaceType, setNewRaceType] = useState('race'); // practice | qualifying | sprint | race | endurance
+  const [newRaceType, setNewRaceType] = useState('race');
   const [newRaceDate, setNewRaceDate] = useState('2025-09-20');
   const [newRaceStart, setNewRaceStart] = useState('14:00');
   const [tmpNewStart, setTmpNewStart] = useState('14:00');
   const [newRaceEnd, setNewRaceEnd] = useState('16:00');
   const [tmpNewEnd, setTmpNewEnd] = useState('16:00');
 
-  // drivers color palette toggle state
   const [editingDriverId, setEditingDriverId] = useState(null);
-
-  // add driver UI state
   const [addingDriver, setAddingDriver] = useState(false);
   const [newDriverName, setNewDriverName] = useState('');
   const [newDriverColor, setNewDriverColor] = useState(PALETTE[0]);
 
-  // contextual menu per stint (hide arrows/delete/etc.)
   const [openMenuIdx, setOpenMenuIdx] = useState(null);
   const toggleMenu = (idx)=> setOpenMenuIdx(openMenuIdx===idx?null:idx);
 
-  const nudgeDur = (i, delta)=>{
-    const next = Math.max(1, (stints[i]?.dur||0) + delta);
-    changeDur(i, next);
-  };
+  const nudgeDur = (i, delta)=>{ const next = Math.max(1, (stints[i]?.dur||0) + delta); changeDur(i, next); };
 
-  // whenever we switch race selection, refresh editing fields
   useEffect(()=>{
     if (!currentRace) {
       setRaceName(''); setRaceType('race'); setRaceDate(new Date().toISOString().slice(0,10));
@@ -198,32 +211,96 @@ export default function Preview(){
     setRaceEndTime(currentRace.end); setTmpRaceEndTime(currentRace.end);
   }, [currentRaceId, profileId, currentRace]);
 
-  // drivers & stints for profile
   const [drivers, setDrivers] = useState(profile?.drivers || []);
   const [stints, setStints] = useState(profile?.stints || []);
-
   useEffect(()=>{ 
     setDrivers(profile?.drivers || []); 
     setStints(profile?.stints || []);
-    // reset add-driver default color when switching team
-    setNewDriverColor(PALETTE[(profile?.drivers?.length||0)%PALETTE.length]||PALETTE[0]);
   }, [profileId, profile]);
 
-  // persist edits back to profiles
-  function upsertProfile(next){ setProfiles(prev => prev.map(p => p.id===profileId ? { ...p, ...next } : p)); }
+  function upsertProfile(next){
+    setProfiles(prev => prev.map(p => p.id===profileId ? { ...p, ...next } : p));
+    if (!supabase) return;
+    if (applyingRemote.current) return;
+    if (isLoadingProfiles) return;
+    scheduleSave(profileId);
+  }
   useEffect(()=>{ if(profile) upsertProfile({ drivers }); }, [drivers]);
   useEffect(()=>{ if(profile) upsertProfile({ stints }); }, [stints]);
   useEffect(()=>{ if(profile) upsertProfile({ currentRaceId }); }, [currentRaceId]);
-  useEffect(()=>{ if(profile && currentRace){
-    const races = (profile.races||[]).map(r => r.id===currentRace.id ? { ...r, name: raceName, type: raceType, date: raceDate, start: raceTime, end: raceEndTime } : r);
-    upsertProfile({ races });
-  }}, [raceName, raceType, raceDate, raceTime, raceEndTime]);
+  useEffect(()=>{ if(profile && currentRace){ const races = (profile.races||[]).map(r => r.id===currentRace.id ? { ...r, name: raceName, type: raceType, date: raceDate, start: raceTime, end: raceEndTime } : r); upsertProfile({ races }); }}, [raceName, raceType, raceDate, raceTime, raceEndTime]);
 
-  // Live clock
+  useEffect(()=>{
+    if (!supabase){
+      setProfiles([ makeTeamA(), makeTeamB() ]);
+      setProfileId('teamA');
+      setIsLoadingProfiles(false);
+      return;
+    }
+    let mounted = true;
+    (async()=>{
+      const { data, error } = await supabase.from('profiles').select('id,name,data').order('name');
+      if (!mounted) return;
+      if (!error && data){
+        if (data.length===0){
+          const A = makeTeamA(); const B = makeTeamB();
+          await supabase.from('profiles').upsert([
+            { id: A.id, name: A.name, data: { races:A.races, currentRaceId:A.currentRaceId, drivers:A.drivers, stints:A.stints } },
+            { id: B.id, name: B.name, data: { races:B.races, currentRaceId:B.currentRaceId, drivers:B.drivers, stints:B.stints } }
+          ]);
+          const seeded = [A,B];
+          if (!mounted) return;
+          setProfiles(seeded);
+          setProfileId('teamA');
+        } else {
+          const converted = data.map(r=>({ id:r.id, name:r.name, ...(r.data||{}) }));
+          setProfiles(converted);
+          setProfileId(converted[0]?.id || '');
+        }
+      } else {
+        setProfiles([ makeTeamA(), makeTeamB() ]);
+        setProfileId('teamA');
+      }
+      setIsLoadingProfiles(false);
+    })();
+
+    const ch = supabase.channel('profiles-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload)=>{
+        const rec = payload.new || payload.old; if (!rec) return;
+        applyingRemote.current = true;
+        if (payload.eventType === 'DELETE'){
+          setProfiles(prev=>prev.filter(p=>p.id!==rec.id));
+        } else {
+          const row = payload.new;
+          const merged = { id: row.id, name: row.name, ...(row.data||{}) };
+          setProfiles(prev=>{
+            const i = prev.findIndex(x=>x.id===row.id);
+            const cp=[...prev];
+            if (i===-1) cp.push(merged); else cp[i]=merged;
+            return cp;
+          });
+        }
+        queueMicrotask(()=>{ applyingRemote.current = false; });
+      }).subscribe();
+
+    return ()=>{ mounted=false; supabase.removeChannel(ch); };
+  }, []);
+
+  const saveTimer = useRef(null);
+  function scheduleSave(id){
+    if (!supabase) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async()=>{
+      const p = profilesRef.current.find(x=>x.id===id);
+      if (!p) return;
+      const row = { id: p.id, name: p.name, data: { races: p.races||[], currentRaceId: p.currentRaceId||'', drivers: p.drivers||[], stints: p.stints||[] } };
+      try{ await supabase.from('profiles').upsert(row); }catch{}
+    }, 400);
+  }
+
   const [now, setNow] = useState(new Date());
   useEffect(()=>{ const t=setInterval(()=>setNow(new Date()), 30000); return ()=>clearInterval(t); },[]);
 
-  // Computed timeline for current race
   const computedState = useMemo(()=>{
     if (!currentRace) return { items: [], totalMinutes: 0 };
     const start = parseHM(raceDate, raceTime);
@@ -247,19 +324,14 @@ export default function Preview(){
   const driverTotals = useMemo(()=>{
     const map = {};
     computedState.items.forEach(it => { map[it.driver.id] = (map[it.driver.id]||0) + it.dur; });
-    return map; // id -> minutes
+    return map;
   }, [computedState]);
 
   function move(i, dir){ const j=i+dir; if(j<0||j>=stints.length) return; const copy=[...stints]; [copy[i],copy[j]]=[copy[j],copy[i]]; setStints(copy); }
   function changeDur(i, v){ if(!Number.isFinite(v)||v<1) return; const copy=[...stints]; copy[i]={...copy[i], dur:v}; setStints(copy); }
   function assignDriver(i, id){ const copy=[...stints]; copy[i]={...copy[i], driverId:id}; setStints(copy); }
   function setDriverColor(id, color){ setDrivers(ds=>ds.map(d=>d.id===id?{...d,color}:d)); setEditingDriverId(null); }
-
-  // delete a stint i (bug fix: ensure function closes properly)
-  function deleteStint(i){
-    setStints(prev => prev.filter((_, idx) => idx !== i));
-    setOpenMenuIdx(null);
-  }
+  function deleteStint(i){ setStints(prev => prev.filter((_, idx) => idx !== i)); setOpenMenuIdx(null); }
 
   function addNewDriver(){
     const name = (newDriverName||'').trim(); if(!name) return;
@@ -271,7 +343,6 @@ export default function Preview(){
     setNewDriverColor(PALETTE[((drivers?.length||0)+1)%PALETTE.length]||PALETTE[0]);
   }
 
-  // balance per driver across the whole day
   function balancePerDriver(){
     if (stints.length === 0) return;
     const driverIds = Array.from(new Set(stints.map(s=>s.driverId)));
@@ -289,7 +360,7 @@ export default function Preview(){
   }
 
   function onTimeChange(value, setTmp, setFinal){
-    if (!allowPartialHHmm(value)) return; // reject invalid keystrokes
+    if (!allowPartialHHmm(value)) return;
     setTmp(value);
     if (value.length===5 && isValidHHmm(value)) setFinal(value);
   }
@@ -297,12 +368,13 @@ export default function Preview(){
   function deleteCurrentRace(){
     if (!currentRace) return;
     const races = (profile.races||[]).filter(r=>r.id!==currentRace.id);
-    const nextCR = races.slice().sort((a,b)=>parseHM(a.date,a.start)-parseHM(b.date,b.start))[0];
+    const nextCR = races.slice().sort((a,b)=>
+      parseHM(a.date, a.start).getTime() - parseHM(b.date, b.start).getTime()
+    )[0];
     upsertProfile({ races, currentRaceId: nextCR?nextCR.id:'' });
     setCurrentRaceId(nextCR?nextCR.id:'');
   }
 
-  // Create a new race and select it
   function addNewRace(){
     const name = (newRaceName||'').trim();
     if (!name) return;
@@ -314,22 +386,9 @@ export default function Preview(){
     setCurrentRaceId(id);
   }
 
-  // ---- Team switch helpers ----
   function switchTeam(id){ setProfileId(id); }
-
-  function scrollToCreate(){
-    const el = typeof document !== 'undefined' ? document.getElementById('create-race') : null;
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  // Ajout d'un relais à la fin de la liste pour la course courante
-  function addStint(){
-    if (!currentRace) return;
-    if (drivers.length === 0) { alert("Ajoutez d'abord un pilote"); return; }
-    const driverId = drivers[0]?.id || '';
-    const newStint = { id: 's' + Math.random().toString(36).slice(2,8), driverId, dur: 10 };
-    setStints(prev => [...prev, newStint]);
-  }
+  function scrollToCreate(){ const el = typeof document !== 'undefined' ? document.getElementById('create-race') : null; if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  function addStint(){ if (!currentRace) return; if (drivers.length === 0) { alert("Ajoutez d'abord un pilote"); return; } const driverId = drivers[0]?.id || ''; const newStint = { id: 's' + Math.random().toString(36).slice(2,8), driverId, dur: 10 }; setStints(prev => [...prev, newStint]); }
 
   return (
     <div style={UI.app} className="mx-auto max-w-sm p-3">
@@ -339,7 +398,7 @@ export default function Preview(){
           <span className="text-xs opacity-70">Aperçu</span>
         </div>
 
-        {/* Teams selector with inline rename */}
+        {/* Teams selector */}
         <div className="mt-2 flex gap-2 overflow-x-auto pb-2 items-center">
           {profiles.map(p => (
             editingTeamId===p.id ? (
@@ -361,11 +420,10 @@ export default function Preview(){
               </div>
             )
           ))}
-          {/* Add team button */}
           <button aria-label="Nouvelle équipe" onClick={addTeam} style={{...UI.chipInactive, fontWeight:800}}>+</button>
         </div>
 
-        {/* Liste des courses triées chrono */}
+        {/* Races list */}
         <div className="mt-2 flex gap-2 overflow-x-auto pb-2">
           {sortedRaces.map(r => (
             <button key={r.id}
@@ -380,7 +438,7 @@ export default function Preview(){
         </div>
       </header>
 
-      {/* Planning des relais */}
+      {/* Timeline */}
       <section style={UI.panel} className="space-y-3 mb-3">
         <div className="flex items-center justify-between">
           <div>
@@ -411,7 +469,6 @@ export default function Preview(){
               <div className="w-10 text-center text-xs opacity-70" style={{alignSelf:'center'}}>#{s.idx}</div>
               <div style={{width:6, borderRadius:4, backgroundColor:s.driver.color}} />
 
-              {/* Main content takes priority */}
               <div className="flex-1" style={{minWidth:180}}>
                 <div style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
                   <div style={{fontSize:20, fontWeight:900, lineHeight:1.1}}>{s.start} – {s.end}</div>
@@ -424,7 +481,6 @@ export default function Preview(){
                     <span style={{width:10, height:10, borderRadius:'50%', backgroundColor:s.driver.color}} />
                     <span style={{fontSize:18, fontWeight:800, color:s.driver.color}}>{s.driver.name}</span>
                   </div>
-                  {/* Duration pill with +/- steppers (merged control) */}
                   <div style={{display:'flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.10)', border:'1px solid rgba(255,255,255,0.10)', borderRadius:999, padding:'4px 8px'}}>
                     <button aria-label="-1 minute" onClick={()=>nudgeDur(i,-1)} style={{...UI.ghostIcon, padding:'2px 8px'}}>−</button>
                     <span style={{fontWeight:800}}>{s.dur} min</span>
@@ -433,7 +489,6 @@ export default function Preview(){
                 </div>
               </div>
 
-              {/* Discreet contextual menu */}
               <div style={{display:'flex', gap:8, alignItems:'center'}}>
                 <button aria-label="Options" onClick={()=>toggleMenu(s.idx)} style={{...UI.ghostIcon}}>⋯</button>
               </div>
@@ -456,7 +511,6 @@ export default function Preview(){
           );
         })}
 
-        {/* Résumé par pilote */}
         <div className="mt-3 grid grid-cols-3 gap-2">
           {drivers.map(d => {
             const m = driverTotals[d.id]||0; const h = Math.floor(m/60), mm = m%60;
@@ -470,7 +524,6 @@ export default function Preview(){
         </div>
       </section>
 
-      {/* Sélection / édition (sous "Course") */}
       <section style={UI.panel} className="space-y-2 mb-3">
         <div className="flex items-center justify-between">
           <div className="text-xs uppercase tracking-wide text-slate-300">Sélectionner / éditer la course</div>
@@ -501,7 +554,6 @@ export default function Preview(){
         </div>
       </section>
 
-      {/* Actions rapides */}
       <section style={UI.panel} className="mb-3">
         <div className="text-xs uppercase tracking-wide text-slate-300 mb-2">Actions rapides</div>
         <div className="flex gap-2 flex-wrap">
@@ -510,11 +562,10 @@ export default function Preview(){
         </div>
       </section>
 
-      {/* Pilotes */}
       <section style={UI.panel}>
         <div className="flex items-center justify-between">
           <div className="text-xs uppercase tracking-wide text-slate-300 mb-2">Pilotes</div>
-          <button onClick={()=>{ setAddingDriver(v=>!v); setNewDriverColor(PALETTE[(drivers.length)%PALETTE.length]||PALETTE[0]); }} style={UI.ghostIcon}>+ Pilote</button>
+          <button onClick={()=>{ setAddingDriver(v=>!v); }} style={UI.ghostIcon}>+ Pilote</button>
         </div>
 
         {addingDriver && (
@@ -535,7 +586,6 @@ export default function Preview(){
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <button onClick={()=>setEditingDriverId(editingDriverId===d.id?null:d.id)} className="h-4 w-4 rounded" style={{backgroundColor:d.color, boxShadow:'0 0 0 1px rgba(255,255,255,0.2)'}} title="Changer couleur" />
-                  {/* inline rename */}
                   <RenameDriver d={d} setDrivers={setDrivers} />
                 </div>
                 <button className="px-3 py-2" style={{background:'#ef4444', borderRadius:16}}>Suppr</button>
@@ -552,7 +602,6 @@ export default function Preview(){
         </div>
       </section>
 
-      {/* Créer une course (bas de page) */}
       <section id="create-race" style={{...UI.panel, marginTop:12}}>
         <div className="text-xs uppercase tracking-wide text-slate-300">Créer une course</div>
         <input style={{...UI.input, width:'100%', marginTop:8}} placeholder="Nom" value={newRaceName} onChange={e=>setNewRaceName(e.target.value)} />
